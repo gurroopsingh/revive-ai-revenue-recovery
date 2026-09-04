@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import {
   ShieldCheck, AlertCircle,
-  TrendingUp, RefreshCw, Activity, Target
+  TrendingUp, RefreshCw, Activity, Target, Zap, Radio
 } from 'lucide-react';
 import api from '../api';
 
@@ -36,21 +36,25 @@ export default function Dashboard() {
   const [agentVsBaseline, setAgentVsBaseline] = useState<any>(null);
   const [funnel, setFunnel] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [execMode, setExecMode] = useState<'SIMULATION' | 'RAZORPAY TEST MODE'>('SIMULATION');
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [dashRes, timeRes, baselineRes, funnelRes] = await Promise.all([
+      const [dashRes, timeRes, baselineRes, funnelRes, healthRes] = await Promise.all([
         api.get('/dashboard/overview'),
         api.get('/analytics/timeline'),
         api.get('/analytics/agent-vs-baseline'),
         api.get('/analytics/funnel'),
+        fetch('http://localhost:3001/health').then(r => r.json()).catch(() => null),
       ]);
       setOverview(dashRes.data.overview);
       setByType(dashRes.data.by_type || []);
       setTimeline(timeRes.data);
       setAgentVsBaseline(baselineRes.data);
       setFunnel(funnelRes.data);
+      if (healthRes?.razorpay_mode) setExecMode('RAZORPAY TEST MODE');
+      else setExecMode('SIMULATION');
     } catch (err) {
       console.error(err);
     } finally {
@@ -91,9 +95,26 @@ export default function Dashboard() {
             All figures computed from live database. Dataset seeded with deterministic seed 42.
           </p>
         </div>
-        <button className="btn btn-secondary" onClick={load} style={{ gap: 8 }}>
-          <RefreshCw size={14} /> Refresh
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {/* Execution Mode Badge */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '5px 12px', borderRadius: 20,
+            background: execMode === 'RAZORPAY TEST MODE'
+              ? 'rgba(16,185,129,0.15)' : 'rgba(100,116,139,0.15)',
+            border: `1px solid ${execMode === 'RAZORPAY TEST MODE' ? 'rgba(16,185,129,0.5)' : 'rgba(100,116,139,0.3)'}`,
+            fontSize: 11, fontWeight: 600, letterSpacing: '0.04em',
+            color: execMode === 'RAZORPAY TEST MODE' ? 'var(--success)' : 'var(--text-muted)',
+          }}>
+            {execMode === 'RAZORPAY TEST MODE'
+              ? <Radio size={11} style={{ color: 'var(--success)' }} />
+              : <Zap size={11} />}
+            {execMode}
+          </div>
+          <button className="btn btn-secondary" onClick={load} style={{ gap: 8 }}>
+            <RefreshCw size={14} /> Refresh
+          </button>
+        </div>
       </div>
 
       {/* Top KPIs */}

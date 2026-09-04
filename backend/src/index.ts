@@ -14,6 +14,13 @@ import { apiRouter } from './routes';
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Capture raw body for Razorpay webhook signature verification
+app.use((req, _res, next) => {
+  let data = Buffer.alloc(0);
+  req.on('data', (chunk: Buffer) => { data = Buffer.concat([data, chunk]); });
+  req.on('end', () => { (req as any).rawBody = data; next(); });
+});
+
 // Security middleware
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173', credentials: true }));
@@ -41,6 +48,7 @@ app.get('/health', (_req, res) => {
       database: { status: 'connected', events, opportunities: opps, decisions },
       agent: { gemini_model: 'gemini-1.5-flash', api_key_set: !!process.env.GEMINI_API_KEY },
       simulation_mode: !process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === 'your_key_here',
+      razorpay_mode: !!(process.env.RAZORPAY_KEY_ID?.startsWith('rzp_test_') && process.env.RAZORPAY_KEY_SECRET),
       dataset: { seed: process.env.SEED || '42', events },
       kill_switch: config?.kill_switch_enabled === 1,
       last_evaluation: lastEval,

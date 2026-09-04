@@ -9,7 +9,8 @@
     "start": "node --experimental-sqlite dist/index.js",
     "test": "node --experimental-sqlite --no-warnings node_modules/jest/bin/jest.js --runInBand",
     "seed": "node --experimental-sqlite --import tsx src/data/seed.ts",
-    "evaluate": "node --experimental-sqlite --import tsx src/evaluation/pipeline.ts"
+    "evaluate": "node --experimental-sqlite --import tsx src/evaluation/pipeline.ts",
+    "test:razorpay": "node --import tsx tests/razorpay.live.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",

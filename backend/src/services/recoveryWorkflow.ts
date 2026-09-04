@@ -2,6 +2,7 @@ import { getDb } from '../db/database';
 import { recoveryAgent } from '../agent/recoveryAgent';
 import { policyEngine } from '../policies/policyEngine';
 import { auditService } from './auditService';
+import { razorpayAdapter } from '../integrations/razorpay/razorpayAdapter';
 import { logger } from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
 import type {
@@ -185,45 +186,145 @@ export class RecoveryWorkflow {
     opportunityId: string; status: string; action?: string;
     blocked?: boolean; blockedReason?: string; requiresApproval?: boolean;
     recoveredAmount?: number; isFallback?: boolean;
+    executionMode?: string; razorpayLinkUrl?: string;
   }> {
     const db = getDb();
     const now = new Date().toISOString();
+
+    const opportunity = db.prepare('SELECT * FROM recovery_opportunities WHERE id = ?')
+      .get(opportunityId) as unknown as RecoveryOpportunity;
+    const customer = db.prepare('SELECT * FROM customers WHERE id = ?')
+      .get(opportunity.customer_id) as unknown as Customer;
+
+    const isRazorpayMode = actionType === 'send_recovery_message' && razorpayAdapter.isTestModeAvailable();
+    const modeLabel = isRazorpayMode ? '[RAZORPAY TEST MODE]' : '[SIMULATION]';
 
     db.prepare('UPDATE recovery_actions SET status = ?, executed_at = ? WHERE id = ?').run('executing', now, actionId);
     await auditService.log({
       opportunity_id: opportunityId, decision_id: decisionId, action_id: actionId,
       event_type: 'action_executing',
-      description: `[SYSTEM] Executing: ${actionType}`,
-      data: { is_ai_decision: !isFallback },
+      description: `${modeLabel} Executing: ${actionType}`,
+      data: { is_ai_decision: !isFallback, execution_mode: isRazorpayMode ? 'RAZORPAY_TEST_MODE' : 'SIMULATION' },
     });
 
-    const result = await this.simulateExecution(actionType, opportunityId);
+    const result = await this.executeWithAdapter(actionType, opportunityId, customer, opportunity);
+    const finalModeLabel = result.executionMode === 'RAZORPAY_TEST_MODE' ? '[RAZORPAY TEST MODE]'
+      : result.executionMode === 'SIMULATION_FALLBACK' ? '[SIMULATION FALLBACK]' : '[SIMULATION]';
+
+    // For Razorpay payment links, recovery is pending (customer must pay the link)
+    const effectiveStatus = result.executionMode === 'RAZORPAY_TEST_MODE' && result.success
+      ? 'in_progress'   // Link created; awaiting customer payment
+      : result.success ? 'recovered' : 'failed';
 
     db.prepare('UPDATE recovery_actions SET status = ?, outcome = ?, outcome_amount = ?, error_message = ? WHERE id = ?')
       .run(result.success ? 'success' : 'failed', result.outcome, result.recoveredAmount || 0, result.error || null, actionId);
     db.prepare('UPDATE agent_decisions SET status = ? WHERE id = ?')
       .run(result.success ? 'executed' : 'failed', decisionId);
     db.prepare('UPDATE recovery_opportunities SET status = ?, updated_at = ? WHERE id = ?')
-      .run(result.success ? 'recovered' : 'failed', now, opportunityId);
+      .run(effectiveStatus, now, opportunityId);
     db.prepare('UPDATE recovery_opportunities SET previous_interventions = previous_interventions + 1 WHERE id = ?')
       .run(opportunityId);
+
+    const successDesc = result.executionMode === 'RAZORPAY_TEST_MODE'
+      ? `${finalModeLabel} ✓ Payment link created: ${result.razorpayLinkUrl}`
+      : `${finalModeLabel} ✓ Recovered ₹${result.recoveredAmount?.toFixed(2)}`;
 
     await auditService.log({
       opportunity_id: opportunityId, decision_id: decisionId, action_id: actionId,
       event_type: result.success ? 'action_success' : 'action_failed',
-      description: result.success
-        ? `[SYSTEM] ✓ Recovered ₹${result.recoveredAmount?.toFixed(2)}`
-        : `[SYSTEM] ✗ Failed: ${result.error}`,
-      data: { is_ai_decision: !isFallback, ...result },
+      description: result.success ? successDesc : `${finalModeLabel} ✗ Failed: ${result.error}`,
+      data: {
+        is_ai_decision: !isFallback,
+        execution_mode: result.executionMode,
+        razorpay_link_id: result.razorpayLinkId,
+        razorpay_link_url: result.razorpayLinkUrl,
+        ...result,
+      },
     });
 
-    return { opportunityId, status: result.success ? 'recovered' : 'failed', action: actionType, recoveredAmount: result.recoveredAmount, isFallback };
+    return {
+      opportunityId, status: effectiveStatus, action: actionType,
+      recoveredAmount: result.recoveredAmount, isFallback,
+      executionMode: result.executionMode,
+      razorpayLinkUrl: result.razorpayLinkUrl,
+    };
+  }
+
+  /**
+   * Executes the action. For `send_recovery_message`, attempts Razorpay
+   * test-mode payment link creation when credentials are configured.
+   * All other actions use simulation. Falls back gracefully on any error.
+   *
+   * Execution path:
+   *   Policy Engine → THIS → Razorpay Adapter (if applicable) → Audit
+   */
+  private async executeWithAdapter(
+    actionType: string,
+    opportunityId: string,
+    customer: Customer,
+    opportunity: RecoveryOpportunity,
+  ): Promise<{
+    success: boolean;
+    outcome: string;
+    recoveredAmount?: number;
+    error?: string;
+    executionMode: 'RAZORPAY_TEST_MODE' | 'SIMULATION' | 'SIMULATION_FALLBACK';
+    razorpayLinkId?: string;
+    razorpayLinkUrl?: string;
+  }> {
+    // ── RAZORPAY TEST MODE: send_recovery_message ────────────────────────────
+    if (actionType === 'send_recovery_message' && razorpayAdapter.isTestModeAvailable()) {
+      // Amount in paise (Razorpay requires integer paise)
+      const amountPaise = Math.round(opportunity.estimated_recoverable * 100);
+
+      const adapterResult = await razorpayAdapter.createPaymentLink({
+        amount: amountPaise,
+        currency: 'INR',
+        reference_id: `revive_${opportunityId.slice(0, 16)}`,
+        description: `Payment recovery — Ref: ${opportunityId.slice(0, 8)}`,
+        customer: {
+          name: customer.name,
+          email: customer.email,
+          contact: customer.phone,
+        },
+      });
+
+      if (adapterResult.success && adapterResult.paymentLinkUrl) {
+        logger.info(
+          `[Razorpay TEST MODE] Payment link sent to ${customer.email}: ${adapterResult.paymentLinkUrl}`
+        );
+        return {
+          success: true,
+          outcome: 'payment_link_created',
+          recoveredAmount: 0, // Actual recovery depends on customer paying the link
+          executionMode: 'RAZORPAY_TEST_MODE',
+          razorpayLinkId: adapterResult.paymentLinkId,
+          razorpayLinkUrl: adapterResult.paymentLinkUrl,
+        };
+      }
+
+      // Adapter failed — DO NOT falsely simulate success. Fail explicitly with SIMULATION_FALLBACK mode.
+      logger.warn(
+        `[Razorpay] Adapter error (${adapterResult.error}), falling back to safe failure mode`
+      );
+      
+      return {
+        success: false,
+        outcome: 'payment_link_failed',
+        error: `Razorpay API error: ${adapterResult.error}`,
+        executionMode: 'SIMULATION_FALLBACK' as any,
+      };
+    }
+
+    // ── SIMULATION (all other actions, or fallback if NO credentials exist) ───
+    return { ...(await this.simulateExecution(actionType, opportunityId)), executionMode: 'SIMULATION' };
+
   }
 
   /**
    * Simulated execution with realistic success rates per action type.
-   * In production: swap this for Razorpay test-mode API calls.
-   * The adapter interface is intentionally isolated here.
+   * In production: replace with real Razorpay API calls per action.
+   * send_recovery_message → already replaced by Razorpay adapter above.
    */
   private async simulateExecution(actionType: string, opportunityId: string): Promise<{
     success: boolean; outcome: string; recoveredAmount?: number; error?: string;

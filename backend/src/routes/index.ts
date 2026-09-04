@@ -5,6 +5,7 @@ import { agentRouter } from './agent';
 import { simulationRouter } from './simulation';
 import { configRouter } from './config';
 import { analyticsRouter } from './analytics';
+import { razorpayWebhookRouter } from './razorpayWebhook';
 
 export const apiRouter = Router();
 
@@ -14,3 +15,4 @@ apiRouter.use('/agent', agentRouter);
 apiRouter.use('/simulation', simulationRouter);
 apiRouter.use('/config', configRouter);
 apiRouter.use('/analytics', analyticsRouter);
+apiRouter.use('/razorpay', razorpayWebhookRouter);
