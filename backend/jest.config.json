@@ -1,0 +1,12 @@
+{
+  "transform": {
+    "^.+\\.tsx?$": ["ts-jest", { "tsconfig": "tsconfig.json" }]
+  },
+  "testEnvironment": "node",
+  "testMatch": ["**/__tests__/**/*.test.ts", "**/tests/**/*.test.ts"],
+  "moduleFileExtensions": ["ts", "js", "json"],
+  "collectCoverageFrom": ["src/**/*.ts", "!src/index.ts"],
+  "globals": {
+    "ts-jest": { "diagnostics": false }
+  }
+}

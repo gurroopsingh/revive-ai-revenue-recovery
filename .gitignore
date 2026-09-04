@@ -1,0 +1,57 @@
+# =====================
+# SECRETS (never commit)
+# =====================
+.env
+.env.local
+.env.*.local
+backend/.env
+
+# =====================
+# DATABASES (regenerate with npm run seed)
+# =====================
+backend/revive.db
+backend/revive.db-shm
+backend/revive.db-wal
+*.db
+*.db-shm
+*.db-wal
+
+# =====================
+# NODE
+# =====================
+node_modules/
+backend/node_modules/
+frontend/node_modules/
+
+# =====================
+# BUILD ARTIFACTS
+# =====================
+backend/dist/
+frontend/dist/
+
+# =====================
+# TEMPORARY / DEV SCRIPTS
+# =====================
+backend/screenshot.js
+backend/evaluation_results.json
+
+# =====================
+# OS / EDITOR
+# =====================
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# =====================
+# LOGS
+# =====================
+*.log
+npm-debug.log*
+
+# =====================
+# TYPESCRIPT BUILD INFO
+# =====================
+*.tsbuildinfo
