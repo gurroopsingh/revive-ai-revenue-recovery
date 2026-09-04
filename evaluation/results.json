@@ -1,0 +1,56 @@
+{
+  "generated_at": "2026-09-04T08:26:50.860Z",
+  "eval_mode": "deterministic_fallback",
+  "test_split_size": 4691,
+  "strategies": [
+    {
+      "name": "Always Retry",
+      "description": "Blindly retry everything",
+      "total_cases": 4691,
+      "attempted": 4264,
+      "recovered_count": 1608,
+      "blocked_count": 427,
+      "total_at_risk_inr": 137187873,
+      "total_recovered_inr": 30581680,
+      "total_cost_inr": 8528,
+      "net_revenue_inr": 30573152,
+      "recovery_rate_pct": 34.27840545725858
+    },
+    {
+      "name": "Rule-Based",
+      "description": "Category to Action map",
+      "total_cases": 4691,
+      "attempted": 4520,
+      "recovered_count": 2154,
+      "blocked_count": 171,
+      "total_at_risk_inr": 137187873,
+      "total_recovered_inr": 44333664,
+      "total_cost_inr": 63126,
+      "net_revenue_inr": 44270538,
+      "recovery_rate_pct": 45.91771477296952
+    },
+    {
+      "name": "REVIVE AI (Fallback)",
+      "description": "EV deterministic model",
+      "total_cases": 4691,
+      "attempted": 4489,
+      "recovered_count": 2447,
+      "blocked_count": 0,
+      "total_at_risk_inr": 137187873,
+      "total_recovered_inr": 67808362,
+      "total_cost_inr": 235352,
+      "net_revenue_inr": 67573010,
+      "recovery_rate_pct": 52.1637177574078
+    }
+  ],
+  "uplift": {
+    "revive_vs_always_retry": {
+      "net_revenue_diff": 36999858,
+      "recovery_rate_pp": 17.885312300149224
+    },
+    "revive_vs_rule_based": {
+      "net_revenue_diff": 23302472,
+      "recovery_rate_pp": 6.2460029844382845
+    }
+  }
+}
