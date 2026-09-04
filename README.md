@@ -47,10 +47,14 @@ AI Agent (Gemini 1.5 Flash)    Deterministic Safe Fallback (EV model)
     │                                    │
     └─────── Zod Schema Validation ──────┘
                     │ invalid → fallback (always)
-             Policy Engine (8 rules, deterministic)
+         Policy Engine (8 rules, deterministic)
                     │
         ┌───────────┼───────────┐
-     BLOCKED    APPROVAL    EXECUTE
+     BLOCKED    APPROVAL    RAZORPAY TEST MODE ADAPTER
+        │           │           │
+        │           │     Payment Link Created
+        │           │           │
+        │           │     Webhook Verification (HMAC)
         │           │           │
      audit_log  audit_log   audit_log
 ```
@@ -69,7 +73,23 @@ The agent is prompted with:
 
 It returns a typed JSON object: `root_cause_category`, `recommended_action`, `confidence`, `rejected_actions` with reasons, and a `stopping_condition`.
 
-**The LLM output is not trusted directly.** Zod validates the schema. The Policy Engine validates the action. The executor runs the action. These are three separate components with no cross-contamination.
+**The LLM output is not trusted directly.** Zod validates the schema. The Policy Engine validates the action. The Razorpay Adapter safely translates the action into a test-mode payment link. These are separate components with no cross-contamination.
+
+---
+
+## Razorpay Test Mode Integration
+
+REVIVE now includes a fully functional, highly secure Razorpay integration bounded by the Policy Engine:
+
+- **Real Payment Links:** AI-recommended `send_recovery_message` actions create real test-mode links via `POST /v1/payment_links`.
+- **Status Checks:** Verifies links using `GET /v1/payment_links/:id`.
+- **Webhook Integration:** Listens for `payment_link.paid` events.
+- **HMAC-SHA256 Verification:** The webhook uses raw body capture to rigorously validate `X-Razorpay-Signature` against `RAZORPAY_WEBHOOK_SECRET`, dropping tampered payloads.
+- **Idempotency:** Webhooks check if an opportunity is already recovered to ignore duplicate events safely.
+- **Fallback Resilience:** If the Razorpay API fails (e.g., timeout, bad credentials), the system explicitly logs `SIMULATION_FALLBACK` or drops to human review. It never falsely claims to have executed an action.
+- **Execution Mode Tracking:** Audit logs and the UI clearly indicate whether an action ran in `SIMULATION` or `RAZORPAY TEST MODE`.
+
+For full details, see [`docs/razorpay-integration.md`](docs/razorpay-integration.md).
 
 ---
 
@@ -243,10 +263,10 @@ cd ../frontend && npm run dev      # frontend: http://localhost:5173
 
 ## Production Roadmap
 
-This is a buildathon prototype. To deploy against real Razorpay:
+This is a buildathon prototype. To deploy against real live-money Razorpay environments:
 
-- Replace `simulateExecution()` in `recoveryWorkflow.ts` with Razorpay API calls
-- Replace synthetic outcome simulation with Razorpay webhook callbacks
+- Expand Razorpay integration beyond Payment Links to all API endpoints
+- Replace synthetic outcome simulation with Razorpay webhook callbacks for all actions
 - Replace `node:sqlite` with PostgreSQL
 - Add proper secrets management (Vault / AWS Secrets Manager)
 - Add rate limiting per merchant, not globally
@@ -257,8 +277,9 @@ See [`docs/production-roadmap.md`](docs/production-roadmap.md) for full detail.
 
 ## Limitations
 
-- Payment execution is **simulated** — no live Razorpay API calls
-- Benchmark outcomes are **synthetically simulated** using per-category probability tables — in production, outcomes come from webhook callbacks
-- `node:sqlite` is **experimental** in Node 24 — not recommended for production databases
-- Gemini API key is required for live AI reasoning — evaluation runs entirely without it via the deterministic fallback
-- Dataset is **synthetic** — real production would require merchant-specific calibration of success probabilities
+- **Payment Link creation is real** in Razorpay Test Mode, but payment outcomes/webhook triggering are part of the controlled test/demo flow (they require manual interaction or synthetic event injection).
+- Other recovery actions (e.g., `retry_payment`) remain simulated.
+- Benchmark outcomes are **synthetically simulated** using per-category probability tables — in live production, all outcomes would come from real webhook callbacks.
+- `node:sqlite` is **experimental** in Node 24 — not recommended for production databases.
+- Gemini API key is required for live AI reasoning — evaluation runs entirely without it via the deterministic fallback.
+- Dataset is **synthetic** — real production would require merchant-specific calibration of success probabilities.

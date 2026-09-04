@@ -2,17 +2,14 @@
 
 This document honestly describes what would change to deploy REVIVE in a real Razorpay environment.
 
-**Current state:** Controlled buildathon prototype. All payment executions are simulated. No live Razorpay API calls.
+**Current state:** Controlled buildathon prototype. Payment Links are real in Razorpay Test Mode, but full production deployment requires additional infrastructure.
 
 ## What Changes for Production
 
 ### 1. Razorpay API Integration
-**Now:** `simulateExecution()` in `recoveryWorkflow.ts` uses random outcomes.  
-**Production:** Replace with Razorpay test-mode API calls:
-- `POST /v1/payments/{id}/capture` for payment capture
-- `POST /v1/subscriptions/{id}/charge` for subscription retry
-- Webhook ingestion via `POST /webhooks` for outcome verification
-- All credentials via environment variables, never committed
+**Now:** `send_recovery_message` is implemented with a real Razorpay Test Mode adapter (`POST /v1/payment_links`) and a verified webhook (`payment_link.paid`). Other actions use `simulateExecution()` with realistic probabilities.  
+**Production:** Expand integration for all recovery actions (e.g., `POST /v1/payments/{id}/capture` for payment capture) and use live credentials for actual financial processing.
+- All credentials via environment variables, never committed.
 
 ### 2. Database
 **Now:** SQLite (node:sqlite, single file).  
@@ -39,11 +36,10 @@ This document honestly describes what would change to deploy REVIVE in a real Ra
 - Audit log tied to authenticated user identity
 
 ### 6. Webhook Ingestion
-**Now:** Synthetic events injected directly into DB.  
-**Production:** Razorpay webhook endpoint:
-- Signature verification (`X-Razorpay-Signature`)
-- Idempotent event processing (webhook_id deduplication)
+**Now:** Razorpay webhook endpoint handles `payment_link.paid` with full HMAC-SHA256 signature verification and idempotency logic. Other events are synthetically injected.  
+**Production:** Expand webhook handler for all possible payment and subscription outcome events:
 - Dead letter queue for failed processing
+- Event replay capabilities
 
 ### 7. Observability
 **Now:** Winston logs to console.  
