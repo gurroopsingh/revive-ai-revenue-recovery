@@ -98,35 +98,35 @@ The LLM **cannot override** any of these rules. It produces recommendations; the
 > REVIVE also supports a live Gemini decision mode, but the benchmark uses the deterministic safe fallback to ensure any judge can reproduce results independently.
 
 **Dataset:** 50,000 events · Seed 42 · Train/Dev/Test split (70/15/15%)  
-**Test split:** 4,691 held-out cases — never touched during development  
+**Test split:** 5,085 held-out cases — never touched during development  
 **Reproduce:** `cd backend && npm run seed && npm run evaluate`
 
-### Benchmark Results (Test Split · 4,691 cases)
+### Benchmark Results (Test Split · 5,085 cases)
 
-| Strategy | Net Recovered Revenue | Recovery Rate | Cases Recovered | Unsafe Actions Blocked |
+| Strategy | Net Recovered Revenue | Recovery Rate | Cases Recovered | Unsafe Actions Blocked (by Policy Engine) |
 |---|---:|---:|---:|---:|
-| Always Retry | ₹3,05,73,152 | 34.28% | 1,608 | 0 |
-| Rule-Based | ₹4,42,70,538 | 45.92% | 2,154 | 0 |
-| **REVIVE Safe Fallback** | **₹6,75,73,010** | **52.16%** | **2,447** | **0** |
+| Always Retry | ₹8,08,41,924 | 35.87% | 1,824 | 460 |
+| Rule-Based | ₹9,48,44,160 | 46.43% | 2,361 | 171 |
+| **REVIVE Safe Fallback** | **₹11,92,16,678** | **52.17%** | **2,653** | **0 (Preemptively avoids unsafe actions)** |
 
-**Uplift over Rule-Based: +₹2,33,02,472 Net Revenue (+6.25 pp recovery rate)**  
-**Uplift over Always Retry: +₹3,69,99,858 Net Revenue (+17.89 pp recovery rate)**
+**Uplift over Rule-Based: +₹2,43,72,518 Net Revenue (+5.74 pp recovery rate)**  
+**Uplift over Always Retry: +₹3,83,74,754 Net Revenue (+16.30 pp recovery rate)**
 
-> Revenue at risk across the full test split: ₹13.72 Cr
+> Revenue at risk across the full test split: ₹23.50 Cr
 
 ---
 
 ## Ablation Study
 
-Proves each contextual signal contributes measurable value. Run with `npm run evaluate -- --ablation`.
+Proves the impact of each contextual signal. Run with `npm run evaluate -- --ablation`.
 
 | Configuration | Net Revenue | Δ vs Full REVIVE |
 |---|---:|---:|
-| Full REVIVE (EV model) | ₹6,75,73,010 | — |
-| Without risk score | ₹7,22,37,579 | +₹46,64,569 (ignoring risk → over-intervention) |
-| Without history | ₹6,75,66,758 | −₹6,252 |
+| Full REVIVE (EV model) | ₹11,92,16,678 | — |
+| Without risk score | ₹12,73,10,470 | +₹80,93,792 (over-intervention trade-off) |
+| Without history | ₹11,92,10,426 | −₹6,252 |
 
-> Removing risk score increases gross recovery but increases intervention on high-risk accounts — generating more revenue short-term at the cost of long-term churn and fraud exposure. The EV model accounts for this cost.
+> **Honest Trade-off:** Removing the risk score actually *increases* short-term net revenue by ₹80.9L, because the system blindly retries high-risk accounts. However, this generates immediate revenue at the unacceptable cost of long-term churn, customer complaints, and fraud exposure. The EV model intentionally sacrifices this unsafe revenue to maintain a healthy risk profile.
 
 ---
 
