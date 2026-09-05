@@ -13,7 +13,7 @@
  * Reference: https://razorpay.com/docs/webhooks/validate-test/
  */
 
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, raw } from 'express';
 import crypto from 'crypto';
 import { getDb } from '../db/database';
 import { auditService } from '../services/auditService';
@@ -24,6 +24,8 @@ export const razorpayWebhookRouter = Router();
 // Razorpay sends raw body for signature validation — must use express.raw()
 razorpayWebhookRouter.post(
   '/webhook',
+  // Capture raw body for HMAC verification before JSON parsing replaces it
+  raw({ type: 'application/json' }),
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (req: Request, res: Response): any => {
     const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
@@ -41,8 +43,9 @@ razorpayWebhookRouter.post(
       return res.status(400).json({ error: 'Missing signature header' });
     }
 
-    const rawBody = (req as any).rawBody as Buffer | undefined;
-    if (!rawBody) {
+    // express.raw() puts the raw bytes directly in req.body as a Buffer
+    const rawBody = req.body as Buffer;
+    if (!rawBody || !Buffer.isBuffer(rawBody)) {
       logger.warn('[Razorpay Webhook] Raw body not available — ensure express.raw() is applied');
       return res.status(400).json({ error: 'Raw body unavailable' });
     }

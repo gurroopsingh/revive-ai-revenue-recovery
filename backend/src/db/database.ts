@@ -162,6 +162,7 @@ function createSchema(db: DatabaseSync): void {
     CREATE INDEX IF NOT EXISTS idx_payment_events_split ON payment_events(split);
     CREATE INDEX IF NOT EXISTS idx_recovery_opps_status ON recovery_opportunities(status);
     CREATE INDEX IF NOT EXISTS idx_recovery_opps_customer ON recovery_opportunities(customer_id);
+    CREATE INDEX IF NOT EXISTS idx_recovery_opps_payment_event ON recovery_opportunities(payment_event_id);
     CREATE INDEX IF NOT EXISTS idx_recovery_opps_split ON recovery_opportunities(split);
     CREATE INDEX IF NOT EXISTS idx_audit_log_opportunity ON audit_log(opportunity_id);
     CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp ON audit_log(timestamp);

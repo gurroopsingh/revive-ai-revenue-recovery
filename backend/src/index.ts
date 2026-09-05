@@ -14,12 +14,7 @@ import { apiRouter } from './routes';
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Capture raw body for Razorpay webhook signature verification
-app.use((req, _res, next) => {
-  let data = Buffer.alloc(0);
-  req.on('data', (chunk: Buffer) => { data = Buffer.concat([data, chunk]); });
-  req.on('end', () => { (req as any).rawBody = data; next(); });
-});
+app.get('/ping', (req, res) => res.send('pong'));
 
 // Security middleware
 app.use(helmet({ contentSecurityPolicy: false }));
@@ -76,3 +71,11 @@ async function main() {
 }
 
 main();
+
+// Keep the process alive even if a Promise rejects unexpectedly (e.g. Gemini timeout race).
+process.on('unhandledRejection', (reason) => {
+  logger.error('Unhandled promise rejection (process kept alive)', { reason: String(reason) });
+});
+process.on('uncaughtException', (err) => {
+  logger.error('Uncaught exception (process kept alive)', { message: err.message });
+});

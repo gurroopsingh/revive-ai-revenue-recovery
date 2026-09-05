@@ -12,17 +12,27 @@ export class RiskDetector {
    * Scan unprocessed payment events and create recovery opportunities.
    * Returns count of opportunities created.
    */
-  detectOpportunities(batchSize = 500): { created: number; totalAtRisk: number } {
+  detectOpportunities(batchSize = 500, specificEventId?: string): { created: number; totalAtRisk: number } {
     const db = getDb();
     const now = new Date().toISOString();
 
     // Find failed/abandoned events without existing opportunities
-    const events = db.prepare(`
+    let query = `
       SELECT pe.* FROM payment_events pe
       LEFT JOIN recovery_opportunities ro ON ro.payment_event_id = pe.id
       WHERE pe.status IN ('failed', 'abandoned', 'overdue') AND ro.id IS NULL
-      LIMIT ?
-    `).all(batchSize) as unknown as PaymentEvent[];
+    `;
+    const params: (string | number)[] = [];
+    
+    if (specificEventId) {
+      query += ` AND pe.id = ?`;
+      params.push(specificEventId);
+    }
+    
+    query += ` LIMIT ?`;
+    params.push(batchSize);
+
+    const events = db.prepare(query).all(...params) as unknown as PaymentEvent[];
 
     let created = 0;
     let totalAtRisk = 0;

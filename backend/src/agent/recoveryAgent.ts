@@ -43,16 +43,40 @@ export class RecoveryAgent {
 
     const prompt = this.buildPrompt({ opportunity, customer, event, customerHistory, previousInterventions });
 
-    // Attempt live Gemini call (with timeout)
-    let timeout: NodeJS.Timeout | undefined;
-    try {
-      const controller = new AbortController();
-      timeout = setTimeout(() => controller.abort(), 15000);
+    // Fast-path: if no valid API key is configured, skip the network call entirely.
+    // The Gemini SDK with an empty/placeholder key can hang for minutes before failing.
+    const apiKey = process.env.GEMINI_API_KEY || '';
+    const hasValidKey = apiKey.length > 10 && !apiKey.includes('your_key');
+    if (!hasValidKey) {
+      logger.warn('[AI] No valid Gemini API key — using deterministic EV fallback');
+      return {
+        decision: this.fallbackDecision(opportunity, 'no_api_key', {
+          risk_score: customer.risk_score,
+          lifetime_value: customer.lifetime_value,
+          history_success_rate: customerHistory.successRate,
+          recent_failures: customerHistory.recentFailures,
+        }),
+        isFallback: true,
+      };
+    }
 
-      const result = await this.model.generateContent({
+    // Attempt live Gemini call (with strict 5-second Promise.race timeout)
+    try {
+      let timerHandle: NodeJS.Timeout;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timerHandle = setTimeout(() => {
+          const e = new Error('Gemini call timed out after 5s');
+          e.name = 'AbortError';
+          reject(e);
+        }, 5000);
+      });
+
+      const generatePromise = this.model.generateContent({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig,
-      });
+      }).finally(() => clearTimeout(timerHandle!));
+
+      const result = await Promise.race([generatePromise, timeoutPromise]) as any;
       
       const rawText = result.response.text().trim();
       logger.debug('Raw LLM response', { length: rawText.length });
@@ -91,11 +115,9 @@ export class RecoveryAgent {
           lifetime_value: customer.lifetime_value,
           history_success_rate: customerHistory.successRate,
           recent_failures: customerHistory.recentFailures
-        }), 
-        isFallback: true 
+        }),
+        isFallback: true,
       };
-    } finally {
-      if (timeout) clearTimeout(timeout);
     }
   }
 

@@ -12,6 +12,7 @@ simulationRouter.post('/run-scenario', async (req, res, next) => {
   try {
     const db = getDb();
     const { scenario } = req.body;
+    logger.info(`[SIMULATION] Starting scenario: ${scenario}`);
     
     if (scenario === 'load_demo_data') {
       // Simulate new events coming in
@@ -73,10 +74,13 @@ simulationRouter.post('/run-scenario', async (req, res, next) => {
         (id, customer_id, merchant_id, event_type, amount, currency, status, payment_method, failure_reason, occurred_at)
       VALUES (?, ?, 'merchant_demo', 'payment_failed', ?, 'INR', 'failed', 'card', ?, ?)
     `).run(eventId, customer.id, amount, failure_reason, new Date().toISOString());
+    logger.info(`[SIMULATION] Inserted payment event ${eventId}`);
 
-    riskDetector.detectOpportunities(1);
+    riskDetector.detectOpportunities(1, eventId);
+    logger.info(`[SIMULATION] Ran risk detector for event ${eventId}`);
 
     const opp = db.prepare('SELECT id FROM recovery_opportunities WHERE payment_event_id = ? LIMIT 1').get(eventId) as { id: string } | undefined;
+    logger.info(`[SIMULATION] Fetched opp: ${opp?.id}`);
     if (!opp) return res.status(500).json({ error: 'Failed to detect opportunity' });
 
     if (scenario === 'ai_failure_fallback') {
@@ -99,7 +103,9 @@ simulationRouter.post('/run-scenario', async (req, res, next) => {
       return res.json({ success: true, opportunity_id: opp.id, runs: [res1, res2], note: 'Second run should be blocked by idempotency or status check' });
     }
 
+    logger.info(`[SIMULATION] Calling processOpportunity for ${opp.id}`);
     const result = await recoveryWorkflow.processOpportunity(opp.id);
+    logger.info(`[SIMULATION] Finished processOpportunity`);
     res.json({ success: true, opportunity_id: opp.id, result });
     
   } catch (err: any) {
